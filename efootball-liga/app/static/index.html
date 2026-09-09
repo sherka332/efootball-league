@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111827"><title>eFootball Liga</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f3f4f6;color:#111827}
+header{background:#111827;color:white;padding:18px;text-align:center;position:sticky;top:0;z-index:5}
+main{max-width:1050px;margin:auto;padding:15px}.card{background:white;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 3px 14px #0001}
+button,select,input{border:0;border-radius:10px;padding:11px;margin:4px;font-size:15px}
+button{background:#111827;color:white;cursor:pointer}.danger{background:#b91c1c}.ok{background:#047857}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.team{border:1px solid #ddd;border-radius:12px;padding:12px;display:flex;justify-content:space-between;align-items:center}
+table{width:100%;border-collapse:collapse;background:white}th,td{padding:9px;border-bottom:1px solid #eee;text-align:center}
+.small{font-size:12px;color:#6b7280}.hidden{display:none}.tabs{display:flex;gap:5px;overflow:auto}
+.tabs button{flex:1;min-width:100px}.badge{padding:4px 8px;border-radius:20px;background:#e5e7eb}
+</style></head>
+<body>
+<header><h2>⚽ eFootball Liga</h2><div id="who">Telegram orqali kirish...</div></header>
+<main>
+<div id="login" class="card"><h3>Telegram Mini App</h3><p id="loginText">Telegram ichidan oching. Avtomatik kirish amalga oshadi.</p></div>
+<div id="app" class="hidden">
+<div class="tabs">
+<button onclick="show('home')">🏠 Bosh sahifa</button>
+<button onclick="show('teams')">👥 Jamoalar</button>
+<button onclick="show('table')">🏆 Jadval</button>
+<button onclick="show('matches')">⚽ O'yinlar</button><button onclick="show('chat')">💬 Chat</button>
+<button id="adminTab" class="hidden" onclick="show('admin')">⚙️ Admin</button>
+</div>
+<section id="home" class="card"></section>
+<section id="teams" class="card hidden"></section>
+<section id="table" class="card hidden"></section>
+<section id="matches" class="card hidden"></section><section id="chat" class="card hidden"></section>
+<section id="admin" class="card hidden"></section>
+</div></main>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+const API='/api'; let token=localStorage.getItem('ef_token'), me=null, season=null;
+const $=x=>document.getElementById(x);
+async function api(path,opt={}){opt.headers={...(opt.headers||{}),...(token?{Authorization:'Bearer '+token}:{})};
+if(opt.body&&typeof opt.body!=='string'){opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(opt.body)}
+let r=await fetch(API+path,opt), d=await r.json().catch(()=>({detail:'Server xatosi'})); if(!r.ok) throw Error(d.detail||'Xato'); return d}
+async function boot(){
+ try{
+  if(!token){
+   let tg=window.Telegram?.WebApp; tg?.ready(); tg?.expand();
+   let init=tg?.initData;
+   if(!init){$('loginText').innerText='Bu sahifani Telegram botining Mini App tugmasi orqali oching.';return}
+   let a=await api('/auth/telegram',{method:'POST',body:{init_data:init}}); token=a.token; localStorage.setItem('ef_token',token)
+  }
+  me=await api('/me'); $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('who').innerText=(me.first_name||me.username||'Foydalanuvchi')+' • '+me.role+(me.team?' • '+me.team.name:'');
+  if(me.role==='ADMIN') $('adminTab').classList.remove('hidden');
+  await refresh(); show('home')
+ }catch(e){localStorage.removeItem('ef_token');$('loginText').innerText=e.message}
+}
+async function refresh(){let s=await api('/standings');season=s.season;renderHome(s.standings);renderTable(s.standings);renderTeams();renderMatches();renderChatUsers();if(me.role==='ADMIN')renderAdmin()}
+function show(id){for(let x of ['home','teams','table','matches','chat','admin'])$(x).classList.toggle('hidden',x!==id)}
+function renderHome(rows){let top=rows.slice(0,3);$('home').innerHTML='<h3>'+season.name+'</h3><div class="grid">'+top.map((x,i)=>`<div class="card"><h2>${['🥇','🥈','🥉'][i]}</h2><b>${x.team}</b><p>${x.player||'Hali o‘yinchi yo‘q'}</p><strong>${x.points} ochko</strong></div>`).join('')+'</div><p>19 tur • 190 o‘yin</p>'}
+async function renderTeams(){let ts=await api('/teams');$('teams').innerHTML='<h3>20 ta jamoa</h3><div class="grid">'+ts.map(t=>`<div class="team"><span><b>${t.short}</b> ${t.name}<br><span class="small">${t.player||'Bo‘sh'}</span></span>${(!t.player&&!me.team)?`<button onclick="join(${t.id})">Tanlash</button>`:''}</div>`).join('')+'</div>'}
+async function join(id){try{await api('/join',{method:'POST',body:{team_id:id}});await refresh();alert('Jamoa muvaffaqiyatli tanlandi')}catch(e){alert(e.message)}}
+async function renderTable(rows){$('table').innerHTML='<h3>Turnir jadvali — '+season.name+'</h3><div style="overflow:auto"><table><tr><th>#</th><th>Jamoa</th><th>O</th><th>G‘</th><th>D</th><th>M</th><th>GF</th><th>GA</th><th>GD</th><th>OCH</th></tr>'+rows.map((x,i)=>`<tr><td>${i+1}</td><td style="text-align:left"><b>${x.team}</b><br><span class="small">${x.player||''}</span></td><td>${x.played}</td><td>${x.wins}</td><td>${x.draws}</td><td>${x.losses}</td><td>${x.gf}</td><td>${x.ga}</td><td>${x.gd}</td><td><b>${x.points}</b></td></tr>`).join('')+'</table></div>'}
+async function renderMatches(){let ms=await api('/matches?season_id='+season.id);let rounds={};ms.forEach(m=>(rounds[m.round]??=[]).push(m));
+$('matches').innerHTML='<h3>O‘yinlar</h3>'+Object.keys(rounds).map(r=>`<div class="card"><b>${r}-tur</b> <span class="small">Deadline: ${new Date(rounds[r][0].deadline_at).toLocaleString('uz-UZ',{timeZone:'Asia/Tashkent',hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'})}</span>${rounds[r].map(m=>`<div class="team"><span>${m.home.name} — ${m.away.name}<br><span class="small">${m.scheduled_date}</span></span><span>${m.played?m.home_goals+' : '+m.away_goals:`<button onclick="score(${m.id})">Natija</button>`}${m.played?`<button onclick="score(${m.id})">✏️</button>`:''}</span></div>`).join('')}</div>`).join('')}
+async function score(id){let h=prompt('Uy jamoa gollari:');if(h===null)return;let a=prompt('Mehmon jamoa gollari:');if(a===null)return;try{await api('/matches/'+id+'/result',{method:'POST',body:{home_goals:+h,away_goals:+a}});await refresh();show('matches')}catch(e){alert(e.message)}}
+async function renderAdmin(){let [u,s,sm]=await Promise.all([api('/admin/users'),api('/seasons'),api('/admin/summary')]);$('admin').innerHTML=`<h3>Admin panel</h3><p>Users: ${sm.users} • Teams: ${sm.teams} • Matches: ${sm.matches} • Played: ${sm.played}</p>
+<div class="card"><h4>Yangi mavsum</h4><input id="sn" placeholder="2-mavsum"><button onclick="newSeason()">Yaratish</button></div>
+<div class="card"><h4>Mavsumlar</h4>${s.map(x=>`<div class="team">${x.name} ${x.active?'🟢':''}<span><button onclick="act(${x.id})">Faollashtir</button><button onclick="resetS(${x.id})">Reset</button>${!x.active?`<button class="danger" onclick="delS(${x.id})">O‘chirish</button>`:''}</span></div>`).join('')}</div>
+<div class="card"><h4>Foydalanuvchilar</h4>${u.map(x=>`<div class="team"><span>${x.username||x.first_name||x.telegram_id} <span class="badge">${x.role}</span></span>${x.role==='PLAYER'?`<button class="${x.banned?'ok':'danger'}" onclick="ban(${x.id},${!x.banned})">${x.banned?'Unban':'Ban'}</button>`:''}</div>`).join('')}</div>`}
+async function newSeason(){let n=$('sn').value.trim();if(!n)return alert('Nom yozing');try{await api('/admin/season',{method:'POST',body:{name:n}});await refresh();show('admin')}catch(e){alert(e.message)}}
+async function act(id){try{await api('/admin/season/'+id+'/activate',{method:'POST'});await refresh();show('admin')}catch(e){alert(e.message)}}
+async function resetS(id){if(!confirm('Natijalarni reset qilamizmi?'))return;try{await api('/admin/reset-season/'+id,{method:'POST'});await refresh();show('admin')}catch(e){alert(e.message)}}
+async function delS(id){if(!confirm('O‘chirishni tasdiqlaysizmi?'))return;try{await api('/admin/season/'+id,{method:'DELETE'});await refresh();show('admin')}catch(e){alert(e.message)}}
+async function ban(id,v){try{await api('/admin/users/'+id+'/ban',{method:'POST',body:{banned:v}});await renderAdmin()}catch(e){alert(e.message)}}
+async function renderChatUsers(){let us=await api('/chat/users');$('chat').innerHTML='<h3>💬 Ishtirokchilar chat'i</h3><div class="grid">'+us.map(u=>`<div class="team"><span>${u.username?'@'+u.username:(u.first_name||'Ishtirokchi')}</span><button onclick="openChat(${u.id},'${(u.username||u.first_name||'Ishtirokchi').replace(/'/g,"\\'")}')">Yozish</button></div>`).join('')+'</div><div id="chatbox"></div>'}
+async function openChat(id,name){let ms=await api('/chat/'+id);$('chatbox').innerHTML='<div class="card"><h4>💬 '+name+'</h4><div id="messages" style="max-height:350px;overflow:auto">'+ms.map(m=>`<p style="text-align:${m.sender_id===me.id?'right':'left'}"><span class="badge">${m.text}</span></p>`).join('')+'</div><div><input id="msg" placeholder="Xabar yozing..." style="width:70%"><button onclick="sendChat(${id})">Yuborish</button></div></div>';document.getElementById('messages').scrollTop=999999}
+async function sendChat(id){let el=$('msg'),text=el.value.trim();if(!text)return;try{await api('/chat/send',{method:'POST',body:{receiver_id:id,text}});el.value='';await openChat(id,'Chat')}catch(e){alert(e.message)}}
+boot();
+</script></body></html>
